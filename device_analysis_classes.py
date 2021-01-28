@@ -480,8 +480,7 @@ class IdVg:
         else:
             self.Vds = params.Vds_param
         
-        self.I_off = np.maximum(np.amin(np.abs(self.Id)), I_noise/W)  # Off current (A/um)
-        print(self.I_off)
+        self.I_off = np.maximum(self.Id_forward[0], I_noise/W)  # Off current (A/um)        
         # (comparing with noise floor)
         self.on_off_ratio = []  # On-off ratio (no units)
         self.SS = []  # Subthreshold swing (mV/dec)
@@ -500,8 +499,7 @@ class IdVg:
         
         Cox = params.Cox
         W = params.W
-        # self.on_off_ratio = self.Id_forward[-1] / np.maximum(self.Id_forward[0], I_noise / W)  # On-off ratio (no units)
-        self.on_off_ratio = (self.Id_max_idvg/1e6)/self.I_off  # On-off ratio (no units)
+        self.on_off_ratio = self.Id_forward[-1] / self.I_off  # On-off ratio (no units)        
         # Off current is minimum(Id, noise floor=1e-12A)
         self.SS = np.diff(self.Vg_forward) / np.diff(np.log10(np.absolute(self.Id_forward.astype(float)) + np.spacing(1)) + np.spacing(1)) * 1e3  # Subthreshold slope (mV/dec)
         # Calculating field-effect mobility
@@ -669,9 +667,9 @@ class TLM:
             goodIdVg_flag = 1 # Flag to represent whether IdVg is well-behaved (1) or not (0)
             gateLeak_temp = self.gateLeak
             compliance_temp = self.compliance
-            for j in np.arange(num_vd_idvg):                     
-                self.idvg[goodIdVg_count,j] = IdVg(self.data[i],self.params, step_number = j)  # Id-Vg object                
-                self.idvg[goodIdVg_count,j].idvg_calc(self.params)  # Perform calculations on Id-Vg                                
+            for j in np.arange(num_vd_idvg):
+                self.idvg[goodIdVg_count,j] = IdVg(self.data[i],self.params, step_number = j)  # Id-Vg object
+                self.idvg[goodIdVg_count,j].idvg_calc(self.params)  # Perform calculations on Id-Vg
                 if self.idvg[goodIdVg_count,j].gateLeak:
                     self.gateLeak = 1
                 if self.idvg[goodIdVg_count,j].compliance:
@@ -682,20 +680,25 @@ class TLM:
                 self.gateLeak = gateLeak_temp
                 self.compliance = compliance_temp
             elif goodIdVg_flag == 1:
-                goodIdVg_count = goodIdVg_count + 1            
-                if self.data[i].id_vd is None:
-                    self.idvd[i] = None
+                if self.data[goodIdVg_count].id_vd is None:
+                    self.idvd[goodIdVg_count] = None
                     self.Vg_idvd = None  # Vg used in Id-Vd (V)
                 else:
-                    self.idvd[i] = IdVd(self.data[i], self.params)  # Id-Vd object
-                    self.Vg_idvd = self.idvd[0].Vg  # Vg used in Id-Vd (V)
-                self.L[i] = self.idvg[i,0].L            
-                if self.L[i] < 1:
-                    self.L_label[i] = str(int(self.L[i]*1000))+r' nm'
+                    self.idvd[goodIdVg_count] = IdVd(self.data[i], self.params)  # Id-Vd object
+                    self.Vg_idvd = self.idvd[0].Vg  # Vg used in Id-Vd (V)                
+                self.L[goodIdVg_count] = self.idvg[goodIdVg_count,0].L
+                if self.L[goodIdVg_count] < 1:
+                    self.L_label[goodIdVg_count] = str(int(self.L[goodIdVg_count]*1000))+r' nm'
                 else:
-                    self.L_label[i] = str(self.L[i])+r' $\mu$m'  
+                    self.L_label[goodIdVg_count] = str(self.L[goodIdVg_count])+r' $\mu$m'
+                goodIdVg_count = goodIdVg_count + 1
         
         self.count = goodIdVg_count                                            
+        self.idvg = self.idvg[:self.count,:]
+        self.idvd = self.idvd[:self.count]
+        self.L = self.L[:self.count]
+        self.L_label = self.L_label[:self.count]
+        
         num_vg_forward = int(self.idvg[0,0].num_vg_forward)  # Number of Vg points in forward sweep of Id-Vg data
         # num_vg_forward = int(self.idvg[0].num_vg_forward)  # Number of Vg points in forward sweep of Id-Vg data
         num_vg = int(self.idvg[0,0].num_vg)  # Number of Vg points in Id-Vg data        
@@ -747,8 +750,7 @@ class TLM:
         Vov_lo = np.amax(self.Vov.min(0))
         index = np.logical_and(self.Vov < Vov_hi, self.Vov > Vov_lo)
         
-        dV = np.mean(np.diff(self.Vov[:,0]))
-        print(dV)
+        dV = np.mean(np.diff(self.Vov[:,0]))        
         Vov_interp = np.arange(Vov_lo, Vov_hi, dV)
        
         # Window of Vgs-Vt overlap across multiple Lchannel's
@@ -778,8 +780,8 @@ class TLM:
             # TLM fitting
                     
             for i in np.arange(self.Vov.shape[0]):
-                X = sm.add_constant(self.L.conj().transpose())  # Adding constant term to the model
-                model = sm.OLS(self.Rtot[i, :].conj().transpose(), X)
+                X = sm.add_constant(self.L.conj().transpose())  # Adding constant term to the model                
+                model = sm.OLS(self.Rtot[i, :].conj().transpose(), X)                
                 results = model.fit()
                 self.Rc[i] = results.params[0] / 2              # Contact resistance (Ohm.um)
                 self.del_Rc[i] = results.bse[0] / 2             # Error in Contact resistance (Ohm.um)
@@ -801,6 +803,8 @@ class TLM:
                 self.goodRc = 1
             if (self.mu_TLM[-1] > 0) and (self.mu_TLM[-1] > 2*np.abs(self.del_mu_TLM[-1])):
                 self.goodMobility = 1
+            if np.max(self.n2D) <= n2D_LL:
+                self.goodTLM = 0
 
 
     def plot_TLM_fit(self, ax, fig):
@@ -1043,8 +1047,11 @@ class TLM:
                         self.del_Rc[self.n2D >= n2D_LL] / 1e3)
             # Plotting Rc (kOhm.um) vs n2D(cm-2)          
             # Setting lower y-limit to min(0,Rc-del_Rc)                          
-            ax.set_ylim(bottom=(np.minimum(np.amin(self.Rc[self.n2D >= n2D_LL]\
+            try:
+                ax.set_ylim(bottom=(np.minimum(np.amin(self.Rc[self.n2D >= n2D_LL]\
                                  - self.del_Rc[self.n2D >= n2D_LL]) / 1e3, 0)))            
+            except ValueError:
+                pass
             # Setting lower x-limit to max(n2D_LL,n2D[0])              
             ax.set_xlim(left=np.maximum(n2D_LL,self.n2D[0])/1e12)
         # set_ticks(ax,5)
@@ -1186,9 +1193,10 @@ class TLM:
         self.plot_IdVg(ax[0], fig, lg = 'log', vd_step = 'low')  # Plotting Id-Vg for all channel lengths in log scale
         self.plot_IdVg(ax[1], fig, lg = 'log', vd_step = 'hi')  # Plotting Id-Vg for all channel lengths in log scale
         self.plot_IdVg_multVds(ax[2], fig, 'log', channel = 0)  # Plotting Id-Vg for 100nm in log 
-        self.plot_TLM_fit(ax[3], fig)  # Plotting TLM fit for the last Vov
-        self.plot_Rc(ax[4], fig, flag = 'n2D')  # Plotting Rc vs n2D
-        self.plot_mu_TLM(ax[5], fig, flag = 'n2D')  # Plotting mu_eff vs n2D
+        if self.goodTLM:
+            self.plot_TLM_fit(ax[3], fig)  # Plotting TLM fit for the last Vov
+            self.plot_Rc(ax[4], fig, flag = 'n2D')  # Plotting Rc vs n2D
+            self.plot_mu_TLM(ax[5], fig, flag = 'n2D')  # Plotting mu_eff vs n2D
         # self.plot_mu_FE(ax[5], fig, flag = 'n2D')  # Plotting mu_eff vs n2D        
         fig.suptitle(device_name)
         # tlm_set[device_count].plot_IdVg(axs_reshape[device_count],fig,'log') #Plotting Id-Vg for all channel lengths in log scale
