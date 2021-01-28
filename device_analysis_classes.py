@@ -480,7 +480,7 @@ class IdVg:
         else:
             self.Vds = params.Vds_param
         
-        self.I_off = np.amax(np.amin(np.abs(self.Id)), I_noise/W)  # Off current (A/um)
+        self.I_off = np.maximum(np.amin(np.abs(self.Id)), I_noise/W)  # Off current (A/um)
         print(self.I_off)
         # (comparing with noise floor)
         self.on_off_ratio = []  # On-off ratio (no units)
