@@ -492,15 +492,16 @@ class IdVg:
         self.Vt_lin = []  # Linear extrapolation threshold voltage (V)
         self.Vt_dgm = []  # Threshold voltage from max derivative of gm (V)
         self.Vov = []  # Overdrive voltage Vgs-Vt (V)
-        self.goodIdVg = 0 # Flag to show whether Id-Vg curve is well-behaved or "good"
+        self.goodIdVg = 1 # Flag to show whether Id-Vg curve is well-behaved or "good"
 
 
     def idvg_calc(self, params):
         """Calculation of parameters from Id-Vg"""
-        self.goodIdVg = 1
+        
         Cox = params.Cox
         W = params.W
-        self.on_off_ratio = self.Id_forward[-1] / np.maximum(self.Id_forward[0], I_noise / W)  # On-off ratio (no units)
+        # self.on_off_ratio = self.Id_forward[-1] / np.maximum(self.Id_forward[0], I_noise / W)  # On-off ratio (no units)
+        self.on_off_ratio = (self.Id_max_idvg/1e6)/self.I_off  # On-off ratio (no units)
         # Off current is minimum(Id, noise floor=1e-12A)
         self.SS = np.diff(self.Vg_forward) / np.diff(np.log10(np.absolute(self.Id_forward.astype(float)) + np.spacing(1)) + np.spacing(1)) * 1e3  # Subthreshold slope (mV/dec)
         # Calculating field-effect mobility
@@ -520,6 +521,9 @@ class IdVg:
         dgmmax_index = np.where(self.dgm[:-9] == np.amax(self.dgm[:-9]))  # Index of maximum dgm
         dgmmax_index, _ = find_peaks(self.dgm, height=0)  # Finds the first local max in dgm        
         
+        if self.Id_max_idvg < 1e-1 and self.on_off_ratio < 1e2: #Setting gate leakage threshold at 1e-7
+            self.goodIdVg = 0
+
         if (np.amax(np.absolute(self.Ig)) > 1e-7): #Setting gate leakage threshold at 1e-7
             self.gateLeak = 1
         
