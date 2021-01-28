@@ -73,8 +73,8 @@ user_folder = "F:\\Google Drive\\Research\\Projects"
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-19-IB21A\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-19-IB21B\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-24-IB21A-capped\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
-# target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-05-IB21A-capped-longer-sweep\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1; interp = 1;
-target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-22-IB21A-IdVds\\"; Vg_idvd_plt = 30; Vds_low = 0.01; isbipolar_idvg = 1;
+target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-05-IB21A-capped-longer-sweep\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1; interp = 1;
+# target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-22-IB21A-IdVds\\"; Vg_idvd_plt = 30; Vds_low = 0.01; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-07-IB21B-capped\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-29-IB22A\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-29-IB22B\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
@@ -195,9 +195,15 @@ fig_rtot.savefig('rtot.svg',transparent=True, bbox_inches='tight', pad_inches=0.
 pp.savefig(fig_rtot)
 
 fig_rc_cdf, ax_rc_cdf = plt.subplots(figsize=(4, 3)) #To plot Id-Vg by channel
-plot_Rc_cdf(fig_rc_cdf, ax_rc_cdf, device_count, tlm_set)
+# plot_Rc_cdf(fig_rc_cdf, ax_rc_cdf, device_count, tlm_set)
+plot_cdf(fig_rc_cdf, ax_rc_cdf, device_count, tlm_set, TLM.get_Rc)
 fig_rc_cdf.savefig('rc_cdf.svg',transparent=True, bbox_inches='tight', pad_inches=0.1, dpi=300)
 pp.savefig(fig_rc_cdf)
+
+fig_mu_TLM_cdf, ax_mu_TLM_cdf = plt.subplots(figsize=(4, 3)) #To plot Id-Vg by channel
+plot_cdf(fig_mu_TLM_cdf, ax_mu_TLM_cdf, device_count, tlm_set, TLM.get_mu_TLM)
+fig_mu_TLM_cdf.savefig('mu_TLM_cdf.svg',transparent=True, bbox_inches='tight', pad_inches=0.1, dpi=300)
+pp.savefig(fig_mu_TLM_cdf)
 
 pp.close()
 plt.close('all')          

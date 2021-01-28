@@ -52,6 +52,7 @@ n2d_label = r'$n_{2D}$  [$10^{12}$ $cm^{-2}$]'
 id_label = r'$I_D$  [$\mu A$/$\mu m$]'
 ig_label = r'$I_G$  [$A$]'
 rc_label = r'$R_{C}$  [k$\Omega\cdot\mu m$]'
+rc_cdf_label = r'$R_{C}$  [$\Omega\cdot\mu m$]'
 mu_eff_label = r'$\mu_{eff}$  [$cm^2$$V^{-1}$$s^{-1}$]'
 mu_fe_label = r'${\mu}_{FE}$ [$cm^2$$V^{-1}$$s^{-1}$]'
 gm_label = r'$g_{m}$ [$S$/$\mu$$m$]'
@@ -313,31 +314,32 @@ def plot_by_Lch(fig, ax, device_count, tlm_set, channel_L, channel_label, num_ch
                 tlm_set[i].plot_IdVg_multVds(ax[ax_index], fig, 'log', channel = k, anno = 'no')
                 
                 
-def plot_Rc_cdf(fig, ax, device_count, tlm_set, n2D = 1e13):
-    """Plots Rc in a CDF at the specifed n2D for all TLMs"""
+def plot_cdf(fig, ax, device_count, tlm_set, get_function, n2D = 1e13):
+    """Plots the value returned by get_function in a CDF plot at the specifed n2D for all TLMs"""
 
-    Rc_array = np.zeros(device_count)
-    del_Rc_array = np.zeros(device_count)
+    X_array = np.zeros(device_count)
+    del_X_array = np.zeros(device_count)
     R_squared_array = np.zeros(device_count)
     position_array = np.empty(shape=(device_count,), dtype='object')
     goodTLM_count = 0
     for i in np.arange(device_count):
         if tlm_set[i].gateLeak == 0 and tlm_set[i].goodTLM and tlm_set[i].R_squared >= 0.8:
-            Rc, del_Rc, R_squared = tlm_set[i].get_Rc(n2D = n2D)            
+            X, del_X, R_squared, goodX, xaxis_label = get_function(tlm_set[i], n2D = n2D)
             position = tlm_set[i].position
-            if Rc > 0 and Rc < 1e4 and np.abs(Rc) > np.abs(del_Rc):
-                Rc_array[goodTLM_count] = Rc
-                del_Rc_array[goodTLM_count] = del_Rc
+            if goodX:
+                X_array[goodTLM_count] = X
+                del_X_array[goodTLM_count] = del_X
                 R_squared_array[goodTLM_count] = R_squared
                 position_array[goodTLM_count] = position,
                 goodTLM_count = goodTLM_count + 1
-    rc_dataset = pd.DataFrame({'Rc': Rc_array[:goodTLM_count], \
-        'del_Rc': del_Rc_array[:goodTLM_count], 'R_squared': R_squared_array[:goodTLM_count],\
+    rc_dataset = pd.DataFrame({'x': X_array[:goodTLM_count], \
+        'del_x': del_X_array[:goodTLM_count], 'r_squared': R_squared_array[:goodTLM_count],\
             'position': position_array[:goodTLM_count]})
     rc_dataset.to_csv('rc.csv')
     print(goodTLM_count)
-    cdf(fig, ax, Rc_array[:goodTLM_count], del_Rc_array[:goodTLM_count])
-    ax.set(xlabel=rc_label, ylabel='CDF')
+    cdf(fig, ax, X_array[:goodTLM_count], del_X_array[:goodTLM_count])
+    ax.set(xlabel=xaxis_label, ylabel='CDF')
+
 
 def plot_all_Rtot(fig, ax, device_count, tlm_set, n2D = 1e13):
     """Plots Rtot vs Lch for all TLMs at the specified n2D"""
@@ -1004,12 +1006,28 @@ class TLM:
             ax.legend(legends, loc='lower right',bbox_to_anchor=[0.95,0.0])
         return legends
 
+
     def get_Rc(self, n2D = 1e13):
         """Returns Rc at specified n2D"""        
         
         Rc_interp = np.interp(n2D, self.n2D, self.Rc)
         del_Rc_interp = np.interp(n2D, self.n2D, self.del_Rc)
-        return Rc_interp, del_Rc_interp, self.R_squared
+        goodRc = 0
+        if Rc_interp > 0 and Rc_interp < 1e4 and np.abs(Rc_interp) > np.abs(del_Rc_interp):
+            goodRc = 1
+        return Rc_interp, del_Rc_interp, self.R_squared, goodRc, rc_cdf_label
+    
+    
+    def get_mu_TLM(self, n2D = 1e13):
+        """Returns mu_TLM at specified n2D"""        
+        
+        mu_TLM_interp = np.interp(n2D, self.n2D, self.mu_TLM)
+        del_mu_TLM_interp = np.interp(n2D, self.n2D, self.del_mu_TLM)
+        goodmu_TLM = 0
+        if mu_TLM_interp > 0 and np.abs(mu_TLM_interp) > np.abs(del_mu_TLM_interp):
+            goodmu_TLM = 1
+        return mu_TLM_interp, del_mu_TLM_interp, self.R_squared, goodmu_TLM, mu_eff_label
+
 
     def plot_Rtot(self, ax, fig, n2D = 1e13, anno = 'yes'):
         """Plots Rtot at specified n2D"""        
