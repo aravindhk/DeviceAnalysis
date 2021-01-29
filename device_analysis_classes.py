@@ -9,6 +9,7 @@ Class definitions to analyse Cascade/Janis data
 """
 
 # TODO: Add support for large-array Id-Vds data
+# TODO: Devise a way to save TLM-objects to file and re-load it for later analysis
 
 import os
 import matplotlib.pyplot as plt
@@ -175,6 +176,59 @@ def read_params(
         tox,
         num_channels,
     )
+
+
+def read_file_g(file_prefix, channel_length, channel_select, vds_low=""):
+    """ Reads Id-Vg file and returns exist_flag and idvg_data"""
+
+    if vds_low == "":
+        filename_g = file_prefix + channel_length + "-G"  # Filename of id-vg file
+    else:
+        filename_g = (
+            file_prefix + channel_length + "-G-Vds" + vds_low
+        )  # Filename of id-vg file
+    file_g_xls = Path(filename_g + ".xls")  # Creating file object
+    file_g_csv = Path(filename_g + ".csv")  # Creating file object
+    exist_flag = 0
+    idvg_data = None
+    if file_g_csv.exists() and int(
+        channel_select
+    ):  # Checking if IdVg and IdVd files exist
+        idvg_data = csv_read(filename_g)
+        exist_flag = 1
+    elif file_g_xls.exists() and int(
+        channel_select
+    ):  # Checking if IdVg and IdVd files exist
+        idvg_data = xls_read(filename_g)
+        exist_flag = 1
+    return idvg_data, exist_flag
+
+
+def read_file_d(file_prefix, channel_length, channel_select, vds_low=""):
+    """ Reads Id-Vg file and returns exist_flag and idvg_data"""
+
+    if vds_low == "":
+        filename_g = file_prefix + channel_length + "-G"  # Filename of id-vg file
+    else:
+        filename_g = (
+            file_prefix + channel_length + "-G-Vds" + vds_low
+        )  # Filename of id-vg file
+    file_g_xls = Path(filename_g + ".xls")  # Creating file object
+    file_g_csv = Path(filename_g + ".csv")  # Creating file object
+    exist_flag = 0
+    idvg_data = None
+    if file_g_csv.exists() and int(
+        channel_select
+    ):  # Checking if IdVg and IdVd files exist
+        idvg_data = csv_read(filename_g)
+        exist_flag = 1
+    elif file_g_xls.exists() and int(
+        channel_select
+    ):  # Checking if IdVg and IdVd files exist
+        idvg_data = xls_read(filename_g)
+        exist_flag = 1
+    return idvg_data, exist_flag
+
 
 
 def cdf(fig, ax, x, xerr=np.empty(shape=(0), dtype=object)):
@@ -366,7 +420,7 @@ def plot_heatmaps(
         )
 
 
-def plot_by_Lch(fig, ax, device_count, tlm_set, channel_L, channel_label, num_channels):
+def plot_IdVg_by_Lch(fig, ax, device_count, tlm_set, channel_L, channel_label, num_channels):
     """Plot the Id-Vg for all TLMs with each channel on a separate subplot"""
 
     for l in np.arange(num_channels):
@@ -377,7 +431,7 @@ def plot_by_Lch(fig, ax, device_count, tlm_set, channel_L, channel_label, num_ch
         )
         ax[l].set_ylim(1e-6, 1e3)  # Sets lower y-limit
     for i in np.arange(device_count):
-        for k in np.arange(tlm_set[i].count):
+        for k in np.arange(tlm_set[i].count_g):
             ax_index = np.where(channel_L == tlm_set[i].L[k])[0]
             ax_index = ax_index[0]
             if tlm_set[i].idvg[k, 0].gateLeak == 0:
@@ -466,7 +520,7 @@ def plot_gate_leakage(
     """Plot the gate for all TLMs for all channels on a single plot"""
 
     for i in np.arange(device_count):
-        for k in np.arange(tlm_set[i].count):
+        for k in np.arange(tlm_set[i].count_g):
             tlm_set[i].idvg[k, 0].plot_Ig(
                 ax_gate, fig_gate
             )  # Plotting Ig for 100nm in log scale for smallest Vds
@@ -481,11 +535,11 @@ def plot_gate_leakage(
 class InputData:
     """Class for input data"""
 
-    def __init__(self, idvg, channel_length, channel_L, index, idvd=None):
-        self.id_vg = idvg  # Assigning read Id-Vg data
+    def __init__(self, channel_length, channel_L, index, idvg, idvd=None):
+        self.idvg = idvg  # Assigning read Id-Vg data
         self.channel_length = channel_length[index]  # Channel length (string)
         self.channel_L = channel_L[index]  # Channel length (value)
-        self.id_vd = idvd  # Assigning read Id-Vd data
+        self.idvd = idvd  # Assigning read Id-Vd data
 
 
 class Flags:
@@ -538,9 +592,9 @@ class Parameters:
 class IdVg:
     """Class for Id-Vg data"""
 
-    def __init__(self, inp, params, step_number):  # Argument is of type InputData
+    def __init__(self, data, params, step_number):  # Argument is of type InputData
         """
-        1) inp - input data object
+        1) data - input data object
         2) step_number - tells us which Vds step is to be considered
         """
         col_index = params.col_index
@@ -548,7 +602,7 @@ class IdVg:
         isbipolar_idvg = params.isbipolar_idvg
         W = params.W
 
-        self.L = inp.channel_L  # Channel length (um)
+        self.L = data.channel_L  # Channel length (um)
         self.gateLeak = 0  # Flag indicating gate leakage
         self.compliance = 0  # Whether the device hit compliance for any of the currents
 
@@ -557,21 +611,21 @@ class IdVg:
         else:
             self.L_label = str(self.L) + r" $\mu$m"
 
-        self.channel_length = inp.channel_length  # Channel length string
-        self.num_vg = int(inp.id_vg.shape[0])  # Number of Vg points in Id-Vg
+        self.channel_length = data.channel_length  # Channel length string
+        self.num_vg = int(data.idvg.shape[0])  # Number of Vg points in Id-Vg
 
         if isbipolar_idvg:
-            self.num_vg_forward = int(inp.id_vg.shape[0] / 2)  # Number of Vg points in
+            self.num_vg_forward = int(data.idvg.shape[0] / 2)  # Number of Vg points in
         else:
-            self.num_vg_forward = int(inp.id_vg.shape[0])  # Number of Vg points in
+            self.num_vg_forward = int(data.idvg.shape[0])  # Number of Vg points in
 
         self.Id = (
-            inp.id_vg[0 : self.num_vg, col_index[0] + step_number * num_var_idvg] / W
+            data.idvg[0 : self.num_vg, col_index[0] + step_number * num_var_idvg] / W
         )  # Reading drain current (A/um)
-        self.Vg = inp.id_vg[
+        self.Vg = data.idvg[
             0 : self.num_vg, col_index[1] + step_number * num_var_idvg
         ]  # Reading gate voltage (V)
-        self.Ig = inp.id_vg[
+        self.Ig = data.idvg[
             0 : self.num_vg, col_index[6] + step_number * num_var_idvg
         ]  # Reading gate current (A/um)
 
@@ -588,13 +642,13 @@ class IdVg:
             self.compliance = 1
 
         self.Id_forward = (
-            inp.id_vg[
+            data.idvg[
                 0 : self.num_vg_forward, col_index[0] + step_number * num_var_idvg
             ]
             / W
         )  # (A/um)
         # Parsing only forward sweep drain current (A/um)
-        self.Vg_forward = inp.id_vg[
+        self.Vg_forward = data.idvg[
             0 : self.num_vg_forward, col_index[1] + step_number * num_var_idvg
         ]  # (V)
 
@@ -614,7 +668,7 @@ class IdVg:
 
         if params.Vds_param == None:
             self.Vds = np.round(
-                inp.id_vg[0, col_index[2] + step_number * num_var_idvg], 1
+                data.idvg[0, col_index[2] + step_number * num_var_idvg], 1
             )  # Reading Vds from Id-Vg data (V)
         else:
             self.Vds = params.Vds_param
@@ -764,26 +818,37 @@ class IdVg:
 class IdVd:
     """Class for Id-Vd data"""
 
-    def __init__(self, inp, params):  # Argument is of type InputData
-        col_index = params.col_index
-        num_var_idvd = params.num_var_idvd
-        num_vg_idvd = params.num_vg_idvd
-        isbipolar_idvd = params.isbipolar_idvd
-        W = params.W
-        if isbipolar_idvd:  # If bipolar sweep, just take forward sweep, else dual sweep
-            num_vd = int(inp.id_vd.shape[0])
+    def __init__(self, data, params):  # Argument is of type InputData
+        self.col_index = params.col_index
+        self.num_var_idvd = params.num_var_idvd
+        self.num_vg_idvd = params.num_vg_idvd
+        self.isbipolar_idvd = params.isbipolar_idvd
+        self.W = params.W
+        self.num_vd = int(data.idvd.shape[0])
+        if (
+            self.isbipolar_idvd
+        ):  # If bipolar sweep, just take forward sweep, else dual sweep
+            self.num_vd_forward = int(data.idvd.shape[0] / 2)
         else:
-            num_vd = int(inp.id_vd.shape[0])
-        self.Vd = np.round(inp.id_vd[0:num_vd, col_index[5]], 2)  # Drain voltage (V)
+            self.num_vd_forward = int(data.idvd.shape[0])
+        self.Vd = np.round(
+            data.idvd[0 : self.num_vd, self.col_index[5]], 2
+        )  # Drain voltage (V)
         self.Id = (
-            inp.id_vd[
-                0:num_vd, col_index[3] : num_vg_idvd * num_var_idvd : num_var_idvd
+            data.idvd[
+                0 : self.num_vd,
+                self.col_index[3] : self.num_vg_idvd
+                * self.num_var_idvd : self.num_var_idvd,
             ]
-            / W
+            / self.W
         )  # Drain current (A/um)
-        self.Vg = inp.id_vd[0, col_index[4] : num_vg_idvd * num_var_idvd : num_var_idvd]
-        self.channel_length = inp.channel_length  # Channel length string
-        self.L = inp.channel_L  # Channel length (um)
+        self.Vg = data.idvd[
+            0,
+            self.col_index[4] : self.num_vg_idvd
+            * self.num_var_idvd : self.num_var_idvd,
+        ]
+        self.channel_length = data.channel_length  # Channel length string
+        self.L = data.channel_L  # Channel length (um)
 
         if self.L < 1:
             self.L_label = str(int(self.L * 1000)) + r" nm"
@@ -791,14 +856,16 @@ class IdVd:
             self.L_label = str(self.L) + r" $\mu$m"
         self.Id_max = np.amax(
             np.abs(
-                inp.id_vd[:, col_index[3] + num_var_idvd * (num_vg_idvd - 1)] / W * 1e6
+                data.idvd[
+                    :, self.col_index[3] + self.num_var_idvd * (self.num_vg_idvd - 1)
+                ]
+                / self.W
+                * 1e6
             )
         )  # Maximum drain current (uA/um)
 
     def plot_IdVd(self, ax, fig, params, Vgs=None):
         """Plots Id-Vd characteristics in linear scale"""
-
-        isbipolar_idvd = params.isbipolar_idvd
 
         if Vgs is None:  # When plot_IdVd is called directly, not through TLM
             ax.set(xlabel=vd_label, ylabel=id_label)
@@ -815,7 +882,7 @@ class IdVd:
             ax.legend(legends, loc="lower right", bbox_to_anchor=[0.95, 0.05])
             # Set tick frequency
             # set_ticks(ax, 5)
-            if isbipolar_idvd == 1:  # in case of bipolar Id-Vd, indicate origin
+            if self.isbipolar_idvd == 1:  # in case of bipolar Id-Vd, indicate origin
                 ax.axhline(0, color="grey", ls="dotted", lw=0.6)
                 ax.axvline(0, color="grey", ls="dotted", lw=0.6)
         else:
@@ -828,27 +895,29 @@ class IdVd:
 class TLM:
     """Class for TLM data"""
 
-    def __init__(self, inp_data, inp_count, params):
+    def __init__(self, data, params, count_g, count_d=0):
         self.params = params
         num_vd_idvg = self.params.num_vd_idvg
         self.column = self.params.column  # Column of the TLM (1-9)
         self.row = self.params.row  # Row of the TLM (1-15)
-        self.data = inp_data  # Input data for all channel lengths
-        self.count = inp_count  # Number of channel lengths
-        self.idvg = np.empty(shape=(self.count, num_vd_idvg), dtype=object)
-        self.idvd = np.empty(shape=(self.count,), dtype=object)  # Id-Vd object
+        self.data = data  # Input data for all channel lengths
+        self.count_g = count_g  # Number of channel lengths in Id-Vg
+        self.count_d = count_d  # Number of channel lengths in Id-Vd
+        self.idvg = np.empty(shape=(self.count_g, num_vd_idvg), dtype=object)
+        self.idvd = np.empty(shape=(self.count_g,), dtype=object)  # Id-Vd object
         self.L = np.empty(
-            shape=(self.count,), dtype=float
+            shape=(self.count_g,), dtype=float
         )  # Channel lengths in the TLM
         self.L_label = np.empty(
-            shape=(self.count,), dtype=object
+            shape=(self.count_g,), dtype=object
         )  # Label strings to use for plotting
         self.gateLeak = 0  # Flag to indicate gate leakage
         self.compliance = 0  # Flag to indicate whether device hit compliance
         self.position = str(self.row) + "-" + str(self.column)  # TLM position string
 
+        # Creating idvg objects from input data
         goodIdVg_count = 0
-        for i in np.arange(self.count):
+        for i in np.arange(self.count_g):
             goodIdVg_flag = (
                 1  # Flag to represent whether IdVg is well-behaved (1) or not (0)
             )
@@ -870,15 +939,7 @@ class TLM:
             if goodIdVg_flag == 0:
                 self.gateLeak = gateLeak_temp
                 self.compliance = compliance_temp
-            elif goodIdVg_flag == 1:
-                if self.data[goodIdVg_count].id_vd is None:
-                    self.idvd[goodIdVg_count] = None
-                    self.Vg_idvd = None  # Vg used in Id-Vd (V)
-                else:
-                    self.idvd[goodIdVg_count] = IdVd(
-                        self.data[i], self.params
-                    )  # Id-Vd object
-                    self.Vg_idvd = self.idvd[0].Vg  # Vg used in Id-Vd (V)
+            elif goodIdVg_flag == 1:                
                 self.L[goodIdVg_count] = self.idvg[goodIdVg_count, 0].L
                 if self.L[goodIdVg_count] < 1:
                     self.L_label[goodIdVg_count] = (
@@ -889,12 +950,24 @@ class TLM:
                         str(self.L[goodIdVg_count]) + r" $\mu$m"
                     )
                 goodIdVg_count = goodIdVg_count + 1
+        
+        self.count_g = goodIdVg_count
+        self.idvg = self.idvg[: self.count_g, :]
+        self.idvd = self.idvd[: self.count_g]
+        self.L = self.L[: self.count_g]
+        self.L_label = self.L_label[: self.count_g]
 
-        self.count = goodIdVg_count
-        self.idvg = self.idvg[: self.count, :]
-        self.idvd = self.idvd[: self.count]
-        self.L = self.L[: self.count]
-        self.L_label = self.L_label[: self.count]
+        # TODO: reconcile janis format with semi-auto cascade format for IdVd measurement
+        # Creating idvd objects from input data
+        for i in np.arange(self.count_d):
+            if self.data[i].idvd is None:
+                self.idvd[i] = None
+                self.Vg_idvd = None  # Vg used in Id-Vd (V)
+            else:
+                self.idvd[i] = IdVd(
+                    self.data[i], self.params
+                )  # Id-Vd object
+                self.Vg_idvd = self.idvd[0].Vg  # Vg used in Id-Vd (V)
 
         num_vg_forward = int(
             self.idvg[0, 0].num_vg_forward
@@ -906,7 +979,7 @@ class TLM:
             self.idvg[0, 0].Vds,
             self.idvg[0, -1].Vds,
         ]  # Vds forId-Vg sweep
-        self.Vov = np.zeros([num_vg_forward, self.count])  # Overdrive voltage (V)
+        self.Vov = np.zeros([num_vg_forward, self.count_g])  # Overdrive voltage (V)
         self.Vg_idvg = self.idvg[0, 0].Vg  # Vg used in Id-Vg (V)
         self.Vg_idvg_forward = self.idvg[0, 0].Vg_forward  # Vg used in Id-Vg (V)
         # Id from Id-Vg collected for all channel lengths(A/um)
@@ -926,8 +999,8 @@ class TLM:
         self.goodRc = 0  # Flag to indicate good Rc extraction
         self.goodMobility = 0  # Flag to indicate good mu extraction
 
-        self.Id_idvg = np.zeros([num_vg, self.count, num_vd_idvg])
-        for i in np.arange(self.count):
+        self.Id_idvg = np.zeros([num_vg, self.count_g, num_vd_idvg])
+        for i in np.arange(self.count_g):
             self.Id_idvg[:, i, 0] = self.idvg[i, 0].Id
             self.Id_idvg[:, i, -1] = self.idvg[i, -1].Id
 
@@ -943,7 +1016,7 @@ class TLM:
             j = -1
         # Finding Vgs-Vt overlap and re-arranging
 
-        for i in np.arange(self.count):
+        for i in np.arange(self.count_g):
             self.Vov[:, i] = self.idvg[i, j].Vov
 
         self.Vov = np.round(self.Vov, self.params.decimals_Vg)
@@ -956,13 +1029,15 @@ class TLM:
 
         # Window of Vgs-Vt overlap across multiple Lchannel's
         self.Vov = Vov_interp
-        self.Id_adjusted = np.zeros([self.Vov.shape[0], self.count])  # (A/um)
-        self.mu_FE_adjusted = np.zeros([self.Vov.shape[0] - 1, self.count])  # (cm2/V/s)
-        self.gm_adjusted = np.zeros([self.Vov.shape[0] - 1, self.count])  # (S/um)
+        self.Id_adjusted = np.zeros([self.Vov.shape[0], self.count_g])  # (A/um)
+        self.mu_FE_adjusted = np.zeros(
+            [self.Vov.shape[0] - 1, self.count_g]
+        )  # (cm2/V/s)
+        self.gm_adjusted = np.zeros([self.Vov.shape[0] - 1, self.count_g])  # (S/um)
 
         if (
             self.Vov.shape[0] > 0
-            and self.count > 1
+            and self.count_g > 1
             and self.gateLeak == 0
             and self.compliance == 0
         ):
@@ -971,7 +1046,7 @@ class TLM:
         # Adjusting Id to align the Vgs-Vt for various channels
 
         if self.goodTLM:
-            for i in np.arange(self.count):
+            for i in np.arange(self.count_g):
                 self.Id_adjusted[:, i] = np.interp(
                     self.Vov, self.idvg[i, j].Vov, self.idvg[i, j].Id_forward
                 )  # (A/um)
@@ -1104,7 +1179,7 @@ class TLM:
             Vov_temp = self.Vov[:-1]  # Since mu_FE is derivative
             if channel == 0:
                 """plot mu_FE for all channels"""
-                for i in np.arange(self.count):
+                for i in np.arange(self.count_g):
                     ax.plot(
                         Vov_temp[Vov_temp >= 0], self.mu_FE_adjusted[Vov_temp >= 0, i]
                     )
@@ -1126,7 +1201,7 @@ class TLM:
             ax.set(xlabel=n2d_label, ylabel=mu_fe_label)
             if channel == 0:
                 """plot mu_FE for all channels"""
-                for i in np.arange(self.count):
+                for i in np.arange(self.count_g):
                     ax.plot(
                         n2D_temp[n2D_temp >= n2D_LL] / 1e12,
                         self.mu_FE_adjusted[n2D_temp >= n2D_LL, i],
@@ -1228,7 +1303,7 @@ class TLM:
 
         if channel == 0:
             """plot gm for all channels"""
-            for i in np.arange(self.count):
+            for i in np.arange(self.count_g):
                 self.idvg[i, 0].plot_gm(ax, fig)
             legends = [i for i in self.L_label]
         elif channel == -1:
@@ -1257,7 +1332,7 @@ class TLM:
             Vov_temp = self.Vov[:-1]  # Since gm is derivative
             if channel == 0:
                 """plot mu_FE for all channels"""
-                for i in np.arange(self.count):
+                for i in np.arange(self.count_g):
                     ax.plot(Vov_temp[Vov_temp >= 0], self.gm_adjusted[Vov_temp >= 0, i])
                 legends = [i for i in self.L_label]
             elif channel == -1:
@@ -1277,7 +1352,7 @@ class TLM:
             ax.set(xlabel=n2d_label, ylabel=gm_label)
             if channel == 0:
                 """plot gm for all channels"""
-                for i in np.arange(self.count):
+                for i in np.arange(self.count_g):
                     ax.plot(
                         n2D_temp[n2D_temp >= n2D_LL] / 1e12,
                         self.gm_adjusted[n2D_temp >= n2D_LL, i],
@@ -1354,7 +1429,7 @@ class TLM:
                     xycoords="axes fraction",
                     fontsize=8.5,
                 )
-        for j in np.arange(self.count):
+        for j in np.arange(self.count_g):
             Rtot_interp = np.interp(n2D, self.n2D, self.Rtot[:, j])
             ax.plot(
                 self.L[j], np.abs(Rtot_interp / 1e3), "o", color="black"
@@ -1555,7 +1630,7 @@ class TLM:
 
         isbipolar_idvd = self.params.isbipolar_idvd
 
-        for i in np.arange(self.count):
+        for i in np.arange(self.count_g):
             self.idvd[i].plot_IdVd(ax, fig, params=self.params, Vgs=Vgs)
         legends = [i for i in self.L_label]
         idmax_anno = int(np.round(np.amax(np.abs(self.idvd[0].Id * 1e6))))
