@@ -41,15 +41,13 @@ sns.set_palette(custom_colors)
 # custom_colors = ["DarkBlue", "Crimson", "DarkGreen", "DarkOrchid", "Orange", "DeepPink"]
 # You can use any HTML colors in the above line. For HTML colors, see this: https://www.w3schools.com/colors/colors_names.asp
 
-interp = 0  # Specify whether Id-Vg interpolation required
+interpolation_flag = 0  # Specify whether Id-Vg interpolation required
 gateLeak = 0  # Number of gate leakage sites
 calc_flag = 1  # Specify whether TLM calculations should be carried out
 decimals_Vg = 0  # Number of decimals in Vgs after rounding
-# Constants
-Cox_30nm = 116  # 30nm SiO2 capacitance (Kirby ACS Nano) (nF/cm2)
-
 flags = Flags(num_rows=15, num_cols=9)
 
+# fmt: off
 # Setting current directory and target directory
 user_folder = "F:\\Google Drive\\Research\\Projects"
 # user_folder = "C:\\Users\\aravi\\Google Drive\\Research\\Projects"
@@ -74,7 +72,7 @@ user_folder = "F:\\Google Drive\\Research\\Projects"
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-19-IB21A\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-19-IB21B\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-24-IB21A-capped\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
-target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-05-IB21A-capped-longer-sweep\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1; interp = 1;
+target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-05-IB21A-capped-longer-sweep\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1; interpolation_flag = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-22-IB21A-IdVds\\"; Vg_idvd_plt = 30; Vds_low = 0.01; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-07-IB21B-capped\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-11-29-IB22A\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
@@ -84,27 +82,27 @@ target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-05-IB21A-capp
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-07-IB22B-capped\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 # target_dir = "\\Pd Interlayer Contacts\\Semi-Auto Cascade\\2020-12-12-IB23\\"; Vg_idvd_plt = 30; Vds_low = 0.1; isbipolar_idvg = 1;
 ###############################################################################
+# fmt: on
+
 target_dir = user_folder + target_dir
 os.chdir(target_dir)  # Move to target directory
 
 # Reading channel parameters and Device parameters
 (
-    channel_params,
-    device_params,
     channel_length,
     channel_L,
     channel_label,
-    channel_index,
+    num_channels,
     chip,
     device,
     file_prefix,
     isfolder_organized,
-    W,
-    tox,
-    num_channels,
-) = read_params(target_dir)
-Cox = Cox_30nm * 30 / tox  # 100nm SiO2 capacitance (nF/cm2)
+    channel_select_array,
+    params_array,
+) = read_params(target_dir, isbipolar_idvg, Vds_low, decimals_Vg, interpolation_flag)
+
 device_index = np.arange(device.shape[0])  # Device index
+channel_index = np.arange(channel_L.shape[0])  # Channel lengths index
 
 # Main section of code
 os.chdir(target_dir)
@@ -118,63 +116,42 @@ for i in device_index:
     if isfolder_organized[i]:  # If organized into folders, cd into folder
         os.chdir(chip[i])
 
-    col_index = device_params[
-        np.ix_([i], [5, 6, 7, 8, 9, 10, 19])
-    ]  # Column indices for various values
-    col_index = col_index[0]  # Converting 2-D array to 1-D
-    # 1,2,3 - Ids, Vgs, Vds for Id-Vg
-    # 4,5,6 - Ids, Vgs, Vds for Id-Vd
-    num_vd_idvg = device_params[i, 16]  # Number of Vd steps in Id-Vg sweep
-    num_var_idvg = device_params[
-        i, 17
-    ]  # Number of column variables in a single Id-Vg sweep
-    # isbipolar_idvd = device_params[i, 12]  # Whether Id-Vd sweep is bipolar
-    # num_vg_idvd = device_params[i, 11]  # Number of Vg steps in Id-Vd sweep
-    # num_var_idvd = device_params[i, 13]  # Number of column variables in a single Id-Vd sweep
-
-    W = device_params[i, 14]  # Channel width (um)
-    tox = device_params[i, 15]  # Thickness of the gate oxide (nm)
-    Cox = Cox_30nm * 30 / tox  # 100nm SiO2 capacitance (nF/cm2)
     input_data = [None] * channel_length.shape[0]  # Creating dummy array for input
-    channel_select = list(device_params[i, 18])  # Encoding to include/exclude channels
-    channel_count_g = 0 # Keep count of number of channels having Id-Vg data    
-    channel_count_d = 0 # Keep count of number of channels having Id-Vd data    
+    channel_select = list(channel_select_array[i])
+    channel_count_g = 0  # Keep count of number of channels having Id-Vg data
+    channel_count_d = 0  # Keep count of number of channels having Id-Vd data
 
-    for j in channel_index:        
+    for j in channel_index:
         idvg_data = None
         idvd_data = None
         exist_flag_g = 0
         exist_flag_d = 0
-        idvg_data, exist_flag_g = read_file_g(file_prefix[i], channel_length[j], channel_select[j+1], vds_low = str(Vds_low))        
+        idvg_data, exist_flag_g = read_file_g(
+            file_prefix[i],
+            channel_length[j],
+            channel_select[j + 1],
+            vds_low=str(Vds_low),
+        )
         # idvd_data, exist_flag_d = read_file_d(file_prefix[i], channel_length[j], channel_select[j+1], vds_low = str(Vds_low))
         # idvg_data, exist_flag = read_file_g(file_prefix[i], channel_length[j], channel_select[j+1])
         if exist_flag_g == 1:
-            input_data[channel_count_g] = InputData(channel_length, channel_L, j, idvg = idvg_data, idvd = idvd_data
+            input_data[channel_count_g] = InputData(
+                channel_length, channel_L, j, idvg=idvg_data, idvd=idvd_data
             )  # Assigning the read data to InputData object
             channel_count_g += 1
             if exist_flag_d == 1:
-                channel_count_d += 1        
+                channel_count_d += 1
 
     if channel_count_g:
         print(device[i])
         row, column = device[i].split("-")
-        params = Parameters(
-            col_index,
-            num_var_idvg,
-            num_vd_idvg,
-            W,
-            Cox,
-            isbipolar_idvg=isbipolar_idvg,
-            Vds_param=Vds_low,
-            decimals_Vg=decimals_Vg,
-            interp=interp,
-            row=row,
-            column=column,
-        )
-        # tlm_set[device_count] = TLM(input_data[:channel_count],channel_count,\
-        #                             params, column = int(column), row = int(row)) #Creating TLM object
+        params = params_array[i]
+        # Creating TLM object
         tlm_set[device_count] = TLM(
-            data = input_data[:channel_count_g], params = params, count_g = channel_count_g, count_d = channel_count_d
+            data=input_data[:channel_count_g],
+            params=params,
+            count_g=channel_count_g,
+            count_d=channel_count_d,
         )  # Creating TLM object
         if 0:  # tlm_set[device_count].gateLeak:
             flags.gate_leak[int(row) - 1, int(column) - 1] = 1

@@ -29,21 +29,7 @@ Id_thresh = 2e-8  # For constant Vt calculation (A)
 I_noise = 1e-12  # Noise floor for Id (A)
 n2D_LL = 1e10  # n2D lower limit for plotting (cm-2)
 compliance_threshold = 1e2  # Threshold to determine whether device hit compliance
-
-# Plot labels
-# vd_label = r'Drain Voltage,  $V_{DS}$  [V]'
-# vg_label = r'Gate Voltage,  $V_{GS}$  [V]'
-# vov_label = r'Overdrive Voltage,  $V_{ov}$  [V]'
-# n2d_label = r'Carrier Concentration,  $n_{2D}$  [$10^{12}$ $cm^{-2}$]'
-# id_label = r'Drain Current,  $I_D$  [$\mu A$/$\mu m$]'
-# ig_label = r'Gate Current,  $I_G$  [$A$]'
-# rc_label = r'Contact Resistance,  $R_{C}$  [k$\Omega\cdot\mu m$]'
-# mu_eff_label = r'Effective Mobility,  $\mu_{eff}$  [$cm^2$$V^{-1}$$s^{-1}$]'
-# mu_fe_label = r'Field-effect Mobility, ${\mu}_{FE}$ [$cm^2$$V^{-1}$$s^{-1}$]'
-# gm_label = r'Transconductance $g_{m}$ [$S$/$\mu$$m$]'
-# rsh_label = r'Sheet Resistance, $R_{sh}$ [k$\Omega$\cdot\boxdot]'
-# rtot_label = r'Total Resistance, $R_{tot}$ [k$\Omega\cdot\mu $m]'
-# lch_label = r'Channel Length,  $L_{ch}$  [$\mu$m]'
+Cox_30nm = 116  # 30nm SiO2 capacitance (Kirby ACS Nano) (nF/cm2)
 
 vd_label = r"$V_{DS}$  [V]"
 vg_label = r"$V_{GS}$  [V]"
@@ -100,7 +86,6 @@ def plot_properties(mpl):
     mpl.rcParams["lines.markersize"] = 3
     mpl.rcParams["figure.autolayout"] = True
     mpl.rcParams["figure.subplot.wspace"] = 0.3  # Horizontal spacing in subplots
-    # mpl.rcParams['figure.subplot.hspace'] = 0.3  # Vertical spacing in subplots
     mpl.rcParams["figure.subplot.hspace"] = 0.4  # Vertical spacing in subplots
     mpl.rcParams["figure.figsize"] = 12, 6  # Figure size
     mpl.rcParams[
@@ -116,22 +101,22 @@ def plot_properties(mpl):
 
 
 def read_params(
-    target_dir,
+    target_dir,    
+    isbipolar_idvg,
+    Vds_low,
+    decimals_Vg,
+    interp,
     channel_params_file="channel_parameters.xlsx",
     device_params_file="device_parameters_auto.xlsx",
 ):
     """ Read the parameters from channel_params_file and device_params_file"""
 
     os.chdir(target_dir)
-
-    # Reading channel parameters - how many channels, what channel names, etc.
     channel_params = Path(channel_params_file)  # Channel parameters file
     channel_params = xlrd.open_workbook(channel_params, logfile=open(os.devnull, "w"))
     channel_params = np.asarray(
         pd.read_excel(channel_params, engine="xlrd")
     )  # Reading Id-Vg data
-
-    # Reading device parameters
     device_params = Path(
         device_params_file
     )  # Device parameters file - type of sweep, column indices, etc.
@@ -151,30 +136,55 @@ def read_params(
         else:
             channel_label[i] = str(channel_L[i]) + r" $\mu$m"
 
-    channel_index = np.arange(channel_L.shape[0])  # Channel lengths index
     chip = device_params[:, 1]  # List of chips (needed?)
     device = device_params[:, 2]  # List of devices
     file_prefix = device_params[:, 3]  # List of file prefixes
     isfolder_organized = device_params[
         :, 4
     ]  # Whether the device data is organized into folders
-    W = device_params[0, 14]  # Channel width (um)
-    tox = device_params[0, 15]  # Thickness of the gate oxide (nm)
-
+    num_vg_idvd = device_params[:, 11]  # Number of Vg steps in Id-Vd sweep
+    isbipolar_idvd = device_params[:, 12]  # Whether Id-Vd sweep is bipolar
+    num_var_idvd = device_params[
+        :, 13
+    ]  # Number of column variables in a single Id-Vd sweep
+    W = device_params[:, 14]  # Channel width (um)
+    tox = device_params[:, 15]  # Thickness of the gate oxide (nm)
+    num_vd_idvg = device_params[:, 16]  # Number of Vd steps in Id-Vg sweep
+    num_var_idvg = device_params[
+        :, 17
+    ]  # Number of column variables in a single Id-Vg sweep
+    channel_select_array = device_params[:, 18]  # Encoding to include/exclude channels
+    col_index = device_params[
+        np.ix_(range(device_params.shape[0]), [5, 6, 7, 8, 9, 10, 19])
+    ]  # Column indices for various values
+    Cox = Cox_30nm * 30 / tox  # 100nm SiO2 capacitance (nF/cm2)
+    params_array = [None] * device.shape[0]
+    for i in np.arange(device.shape[0]):
+        row, column = device[i].split("-")
+        params_array[i] = Parameters(
+            col_index[i, :],
+            num_var_idvg[i],
+            num_vd_idvg[i],
+            W[i],
+            Cox[i],
+            isbipolar_idvg=isbipolar_idvg,
+            Vds_param=Vds_low,
+            decimals_Vg=decimals_Vg,
+            interp=interp,
+            row=row,
+            column=column,
+        )
     return (
-        channel_params,
-        device_params,
         channel_length,
         channel_L,
         channel_label,
-        channel_index,
+        num_channels,
         chip,
         device,
         file_prefix,
         isfolder_organized,
-        W,
-        tox,
-        num_channels,
+        channel_select_array,
+        params_array,
     )
 
 
@@ -204,7 +214,11 @@ def read_file_g(file_prefix, channel_length, channel_select, vds_low=""):
     return idvg_data, exist_flag
 
 
-def read_file_d(file_prefix, channel_length, channel_select, vds_low=""):
+def read_file_d_janis(file_prefix, channel_length, channel_select, vds_low=""):
+    pass
+
+
+def read_file_d_semiauto(file_prefix, channel_length, channel_select, vds_low=""):
     """ Reads Id-Vg file and returns exist_flag and idvg_data"""
 
     if vds_low == "":
@@ -228,7 +242,6 @@ def read_file_d(file_prefix, channel_length, channel_select, vds_low=""):
         idvg_data = xls_read(filename_g)
         exist_flag = 1
     return idvg_data, exist_flag
-
 
 
 def cdf(fig, ax, x, xerr=np.empty(shape=(0), dtype=object)):
@@ -420,7 +433,9 @@ def plot_heatmaps(
         )
 
 
-def plot_IdVg_by_Lch(fig, ax, device_count, tlm_set, channel_L, channel_label, num_channels):
+def plot_IdVg_by_Lch(
+    fig, ax, device_count, tlm_set, channel_L, channel_label, num_channels
+):
     """Plot the Id-Vg for all TLMs with each channel on a separate subplot"""
 
     for l in np.arange(num_channels):
@@ -939,7 +954,7 @@ class TLM:
             if goodIdVg_flag == 0:
                 self.gateLeak = gateLeak_temp
                 self.compliance = compliance_temp
-            elif goodIdVg_flag == 1:                
+            elif goodIdVg_flag == 1:
                 self.L[goodIdVg_count] = self.idvg[goodIdVg_count, 0].L
                 if self.L[goodIdVg_count] < 1:
                     self.L_label[goodIdVg_count] = (
@@ -950,7 +965,7 @@ class TLM:
                         str(self.L[goodIdVg_count]) + r" $\mu$m"
                     )
                 goodIdVg_count = goodIdVg_count + 1
-        
+
         self.count_g = goodIdVg_count
         self.idvg = self.idvg[: self.count_g, :]
         self.idvd = self.idvd[: self.count_g]
@@ -964,9 +979,7 @@ class TLM:
                 self.idvd[i] = None
                 self.Vg_idvd = None  # Vg used in Id-Vd (V)
             else:
-                self.idvd[i] = IdVd(
-                    self.data[i], self.params
-                )  # Id-Vd object
+                self.idvd[i] = IdVd(self.data[i], self.params)  # Id-Vd object
                 self.Vg_idvd = self.idvd[0].Vg  # Vg used in Id-Vd (V)
 
         num_vg_forward = int(
